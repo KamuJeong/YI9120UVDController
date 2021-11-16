@@ -25,7 +25,7 @@ public:
     }
 
 public:
-    void connect(const std::string & ipaddress, int port);
+    bool connect(const std::string & ipaddress, int port);
 
     void send(int len, void *data);
 
@@ -38,9 +38,6 @@ private:
 
 private:
     SOCKET sock{INVALID_SOCKET};
-
-    std::string ip_address;
-    int port_number;
 
     std::function<void(std::vector<unsigned char> &&)> receive_fn;
 

@@ -23,9 +23,8 @@ bool Controller::connect(const std::string& ipaddress, int port)
 {
 	if (!pLinker->isConnected())
 	{
-		pLinker->connect(ipaddress, port);
-
-		std::this_thread::sleep_for(std::chrono::microseconds(250000));
+		if (!pLinker->connect(ipaddress, port))
+			return false;
 
 		auto packet = prepareSetPacket<PACKCODE_YL9020_INFORM, 0>(getInform());
 		pLinker->send((int)packet.size(), packet.data());

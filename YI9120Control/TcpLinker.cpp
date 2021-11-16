@@ -29,73 +29,73 @@ TcpLinker::~TcpLinker()
 
 void TcpLinker::thread_fn()
 {
-    SOCKADDR_IN target;                                    //Socket address information
-    target.sin_family = AF_INET;                           // address family Internet
-    target.sin_port = htons(port_number);                         //Port to connect on
-    target.sin_addr.s_addr = inet_addr(ip_address.c_str());                 //Target IP
-
-    if (::connect(sock, (SOCKADDR *)&target, sizeof(target)) != SOCKET_ERROR)
+    while(true)
     {
-        keepAlive();
-
-        while(true)
+        u_long len;
+        if(::ioctlsocket(sock, FIONREAD, &len) == SOCKET_ERROR)
         {
-            u_long len;
-            if(::ioctlsocket(sock, FIONREAD, &len) == SOCKET_ERROR)
-            {
-                if(WSAGetLastError() == WSAENETDOWN)
-                    break;
-            }
-
-            if(len > 0)
-            {
-                std::vector<unsigned char> data(len);
-                int result = ::recv(sock, (char *)data.data(), len,  0);
-                if(result <= 0)
-                    break;
-
-                if(receive_fn != nullptr)
-                {
-                    if(result < (int)len)    data.resize(result);
-                    receive_fn(std::move(data)); 
-                }
-            }
-
-            if(std::chrono::steady_clock::now() - keepAlive_pt > keepalive_second)
-            {
+            if(WSAGetLastError() == WSAENETDOWN)
                 break;
-            }
-
-            std::this_thread::sleep_for(std::chrono::microseconds(100000));
         }
 
-        if (receive_fn != nullptr)
+        if(len > 0)
         {
-            receive_fn(std::move(std::vector<unsigned char>()));
+            std::vector<unsigned char> data(len);
+            int result = ::recv(sock, (char *)data.data(), len,  0);
+            if(result <= 0)
+                break;
+
+            if(receive_fn != nullptr)
+            {
+                if(result < (int)len)    data.resize(result);
+                receive_fn(std::move(data)); 
+            }
         }
+
+        if(std::chrono::steady_clock::now() - keepAlive_pt > keepalive_second)
+        {
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::microseconds(100000));
     }
-    else
+
+    if (receive_fn != nullptr)
     {
-        std::cerr << "fail to connect to " << ip_address << ":" << port_number << std::endl;
+        receive_fn(std::move(std::vector<unsigned char>()));
     }
 
     close();
 }
 
-void TcpLinker::connect(const std::string &ipaddress, int port)
+bool TcpLinker::connect(const std::string &ipaddress, int port)
 {
     if (isConnected())
-        return;
+        return false;
 
     sock = socket(PF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock != INVALID_SOCKET)
     {
-        ip_address = ipaddress;
-        port_number = port;
+        SOCKADDR_IN target;                                    //Socket address information
+        target.sin_family = AF_INET;                           // address family Internet
+        target.sin_port = htons(port);                         //Port to connect on
+        target.sin_addr.s_addr = inet_addr(ipaddress.c_str());                 //Target IP
 
-        std::thread t{&TcpLinker::thread_fn, this};
-        t.detach();
+        if (::connect(sock, (SOCKADDR*)&target, sizeof(target)) != SOCKET_ERROR)
+        {
+            keepAlive();
+            std::thread t{ &TcpLinker::thread_fn, this };
+            t.detach();
+
+            return true;
+        }
+        else
+        {
+            std::cerr << "fail in connection to " << ipaddress << ":" << port << std::endl;
+            close();
+        }
     }
+    return false;
 }
 
 void TcpLinker::send(int len, void *data)
